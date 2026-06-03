@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paste to Markdown</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e0e;
+    --surface: #171717;
+    --border: #2a2a2a;
+    --border-hover: #444;
+    --text: #e8e8e8;
+    --text-muted: #666;
+    --accent: #c8f04a;
+    --accent-dark: #a8cc30;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-weight: 300;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 2rem 2.5rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 1.5rem;
+  }
+
+  header h1 {
+    font-family: var(--mono);
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--accent);
+    letter-spacing: -0.02em;
+  }
+
+  header p {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 300;
+  }
+
+  .workspace {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+  }
+
+  .pane {
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+  }
+  .pane:last-child { border-right: none; }
+
+  .pane-header {
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+  }
+
+  .pane-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .pane-actions { display: flex; gap: 8px; align-items: center; }
+
+  button {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.05em;
+    padding: 5px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-muted);
+  }
+
+  button:hover { border-color: var(--border-hover); color: var(--text); }
+
+  button.primary {
+    background: var(--accent);
+    color: #0e0e0e;
+    border-color: var(--accent);
+    font-weight: 500;
+  }
+  button.primary:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+
+  button.copied {
+    background: #1a2a0a;
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .input-area {
+    flex: 1;
+    padding: 1.5rem;
+    font-family: var(--sans);
+    font-size: 0.9rem;
+    line-height: 1.7;
+    font-weight: 300;
+    color: var(--text);
+    background: var(--bg);
+    border: none;
+    outline: none;
+    resize: none;
+    min-height: 500px;
+  }
+
+  .input-area[contenteditable]:empty::before {
+    content: attr(data-placeholder);
+    color: var(--text-muted);
+    pointer-events: none;
+  }
+
+  #output {
+    flex: 1;
+    padding: 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.8;
+    color: #b0c060;
+    background: var(--bg);
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    min-height: 500px;
+  }
+
+  #output.empty { color: var(--text-muted); font-style: italic; font-family: var(--sans); font-size: 0.85rem; }
+
+  .drop-zone {
+    border: 1.5px dashed var(--border);
+    border-radius: 6px;
+    margin: 1rem 1.5rem;
+    padding: 1rem;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-family: var(--mono);
+    transition: border-color 0.2s, color 0.2s;
+    cursor: pointer;
+  }
+
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .stats {
+    padding: 0.5rem 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 1.5rem;
+  }
+
+  @media (max-width: 700px) {
+    .workspace { grid-template-columns: 1fr; }
+    .pane { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>paste-to-markdown</h1>
+  <p>Convert HTML or rich text into clean Markdown — no dependencies, works offline</p>
+</header>
+
+<div class="workspace">
+  <div class="pane">
+    <div class="pane-header">
+      <span class="pane-label">Input</span>
+      <div class="pane-actions">
+        <button onclick="clearInput()">Clear</button>
+        <button onclick="loadSample()" class="primary">Try sample</button>
+      </div>
+    </div>
+    <div
+      id="input"
+      class="input-area"
+      contenteditable="true"
+      data-placeholder="Paste HTML or rich text here…"
+      oninput="convert()"
+      onpaste="handlePaste(event)"
+    ></div>
+    <div class="drop-zone" id="dropzone">Drop an .html file here</div>
+    <div class="stats" id="input-stats">0 chars · 0 words</div>
+  </div>
+
+  <div class="pane">
+    <div class="pane-header">
+      <span class="pane-label">Markdown</span>
+      <div class="pane-actions">
+        <button onclick="downloadMd()">Download .md</button>
+        <button id="copy-btn" onclick="copyOutput()" class="primary">Copy</button>
+      </div>
+    </div>
+    <div id="output" class="empty">Output will appear here…</div>
+    <div class="stats" id="output-stats">0 chars · 0 lines</div>
+  </div>
+</div>
+
+<script>
+function htmlToMarkdown(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return nodeToMd(div).trim().replace(/\n{3,}/g, '\n\n');
+}
+
+function nodeToMd(node) {
+  if (node.nodeType === Node.TEXT_NODE) {
+    return node.textContent.replace(/\s+/g, ' ');
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+  const tag = node.tagName.toLowerCase();
+  const children = () => Array.from(node.childNodes).map(nodeToMd).join('');
+
+  if (['script','style','head'].includes(tag)) return '';
+
+  if (tag === 'br') return '\n';
+  if (['p','div'].includes(tag)) {
+    const inner = children().trim();
+    return inner ? '\n\n' + inner + '\n\n' : '\n\n';
+  }
+  if (tag === 'h1') return '\n\n# ' + children().trim() + '\n\n';
+  if (tag === 'h2') return '\n\n## ' + children().trim() + '\n\n';
+  if (tag === 'h3') return '\n\n### ' + children().trim() + '\n\n';
+  if (tag === 'h4') return '\n\n#### ' + children().trim() + '\n\n';
+  if (tag === 'h5') return '\n\n##### ' + children().trim() + '\n\n';
+  if (tag === 'h6') return '\n\n###### ' + children().trim() + '\n\n';
+  if (['strong','b'].includes(tag)) return '**' + children() + '**';
+  if (['em','i'].includes(tag)) return '_' + children() + '_';
+  if (tag === 'code') return '`' + node.textContent + '`';
+  if (tag === 'pre') return '\n\n```\n' + node.textContent.trim() + '\n```\n\n';
+  if (tag === 'blockquote') return '\n\n' + children().trim().split('\n').map(l => '> ' + l).join('\n') + '\n\n';
+  if (tag === 'a') {
+    const href = node.getAttribute('href') || '';
+    const text = children().trim();
+    return href ? `[${text}](${href})` : text;
+  }
+  if (tag === 'img') {
+    const src = node.getAttribute('src') || '';
+    const alt = node.getAttribute('alt') || '';
+    return `![${alt}](${src})`;
+  }
+  if (tag === 'hr') return '\n\n---\n\n';
+  if (tag === 'ul') {
+    return '\n\n' + Array.from(node.querySelectorAll(':scope > li')).map(li =>
+      '- ' + li.textContent.trim().replace(/\n+/g, ' ')
+    ).join('\n') + '\n\n';
+  }
+  if (tag === 'ol') {
+    return '\n\n' + Array.from(node.querySelectorAll(':scope > li')).map((li, i) =>
+      (i+1) + '. ' + li.textContent.trim().replace(/\n+/g, ' ')
+    ).join('\n') + '\n\n';
+  }
+  if (tag === 'table') {
+    const rows = Array.from(node.querySelectorAll('tr'));
+    if (!rows.length) return '';
+    const toRow = r => '| ' + Array.from(r.querySelectorAll('th,td')).map(c => c.textContent.trim()).join(' | ') + ' |';
+    const header = toRow(rows[0]);
+    const sep = '| ' + Array.from(rows[0].querySelectorAll('th,td')).map(() => '---').join(' | ') + ' |';
+    const body = rows.slice(1).map(toRow).join('\n');
+    return '\n\n' + header + '\n' + sep + (body ? '\n' + body : '') + '\n\n';
+  }
+  return children();
+}
+
+function convert() {
+  const inputEl = document.getElementById('input');
+  const html = inputEl.innerHTML;
+  const text = inputEl.innerText || '';
+
+  updateStats('input-stats', text.length, text.trim().split(/\s+/).filter(Boolean).length);
+
+  if (!text.trim()) {
+    setOutput('', true);
+    return;
+  }
+
+  const md = htmlToMarkdown(html);
+  setOutput(md, false);
+}
+
+function setOutput(text, empty) {
+  const out = document.getElementById('output');
+  if (empty) {
+    out.textContent = 'Output will appear here…';
+    out.classList.add('empty');
+    updateStats('output-stats', 0, 0);
+  } else {
+    out.textContent = text;
+    out.classList.remove('empty');
+    updateStats('output-stats', text.length, text.split('\n').length);
+  }
+}
+
+function updateStats(id, a, b) {
+  const labels = id === 'input-stats' ? ['chars','words'] : ['chars','lines'];
+  document.getElementById(id).textContent = `${a} ${labels[0]} · ${b} ${labels[1]}`;
+}
+
+function handlePaste(e) {
+  e.preventDefault();
+  const html = e.clipboardData.getData('text/html');
+  const plain = e.clipboardData.getData('text/plain');
+  const input = document.getElementById('input');
+  if (html) {
+    input.innerHTML = html;
+  } else {
+    input.innerText = plain;
+  }
+  convert();
+}
+
+function clearInput() {
+  document.getElementById('input').innerHTML = '';
+  setOutput('', true);
+  updateStats('input-stats', 0, 0);
+}
+
+function copyOutput() {
+  const text = document.getElementById('output').textContent;
+  if (!text || document.getElementById('output').classList.contains('empty')) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-btn');
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
+  });
+}
+
+function downloadMd() {
+  const text = document.getElementById('output').textContent;
+  if (!text || document.getElementById('output').classList.contains('empty')) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type:'text/markdown'}));
+  a.download = 'output.md';
+  a.click();
+}
+
+function loadSample() {
+  document.getElementById('input').innerHTML = `<h1>Getting Started</h1><p>Welcome to <strong>paste-to-markdown</strong> — a fast, offline HTML converter.</p><h2>Features</h2><ul><li>Converts <em>rich text</em> and HTML</li><li>Handles <code>inline code</code> and tables</li><li>Works entirely in the browser</li></ul><h2>Example table</h2><table><tr><th>Name</th><th>Type</th></tr><tr><td>Alice</td><td>Admin</td></tr><tr><td>Bob</td><td>User</td></tr></table><blockquote>No server. No dependencies. Just paste and go.</blockquote>`;
+  convert();
+}
+
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.html')) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      document.getElementById('input').innerHTML = ev.target.result;
+      convert();
+    };
+    reader.readAsText(file);
+  }
+});
+</script>
+</body>
+</html>
